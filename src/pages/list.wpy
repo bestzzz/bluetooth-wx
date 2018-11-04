@@ -1,0 +1,81 @@
+<style lang="less" scoped>
+.list {
+  &-content {
+    &-item {
+      border-bottom: 1px solid #a4a4a4;
+      padding: 25rpx;
+      &-time {
+        font-size: 42rpx;
+        font-weight: bold;
+      }
+      &-detail {
+        font-size: 26rpx;
+        color: #7a7979;
+      }
+    }
+    &-item:last-child {
+      border: unset;
+    }
+  }
+}
+</style>
+
+<template>
+  <view class="list">
+    <view class="list-content">
+      <view wx:for="{{list}}" wx:key="{{index}}" class="list-content-item">
+        <view class="list-content-item-time">{{item.time}}</view>
+        <view class="list-content-item-detail">
+          <view class="list-content-item-detail-sensor">传感器：{{item.sensor}}</view>
+          <view class="list-content-item-detail-temp">温度：{{item.temperature}}</view>
+          <view class="list-content-item-detail-vol">电压：{{item.voltage}}</view>
+        </view>      
+      </view>
+    </view>
+  </view>
+</template>
+
+<script>
+import wepy from 'wepy'
+
+export default class List extends wepy.page {
+  config = {
+    navigationBarTitleText: '列表',
+  }
+
+  data = {
+    list: [
+      {
+        time: '10:21:48',
+        sensor: '20481231',
+        temperature: '20',
+        voltage: '5',
+      },
+      {
+        time: '10:21:48',
+        sensor: '20481231',
+        temperature: '20',
+        voltage: '5',
+      },
+      {
+        time: '10:21:48',
+        sensor: '20481231',
+        temperature: '20',
+        voltage: '5',
+      },
+      {
+        time: '10:21:48',
+        sensor: '20481231',
+        temperature: '20',
+        voltage: '5',
+      },
+      {
+        time: '10:21:48',
+        sensor: '20481231',
+        temperature: '20',
+        voltage: '5',
+      },
+    ]
+  }
+}
+</script>

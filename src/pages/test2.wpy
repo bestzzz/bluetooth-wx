@@ -1,0 +1,135 @@
+<style>
+</style>
+
+<template>
+  <view>
+    <button @tap="open">开始</button>
+    <button @tap="stop">停止</button>
+    <button @tap="over">结束</button>
+  </view>
+</template>
+
+<script>
+import wepy from 'wepy';
+
+function inArray(arr, key, val) {
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i][key] === val) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+export default class List extends wepy.page {
+  config = {
+    navigationBarTitleText: '列表'
+  };
+
+  data = {
+    dataList: {},
+    devices: []
+  };
+
+  methods = {
+    open() {
+      this.openBluetoothAdapter();
+      // this.openBluetoothAdapter();
+    },
+    stop() {
+      wx.stopBluetoothDevicesDiscovery();
+    },
+    over() {
+      wx.closeBluetoothAdapter();
+      this._discoveryStarted = false;
+    }
+  };
+
+  onLoad() {
+    // this.openBluetoothAdapter();
+  }
+
+  openBluetoothAdapter() {
+    wx.openBluetoothAdapter({
+      success: res => {
+        console.log('openBluetoothAdapter success', res);
+        this.startBluetoothDevicesDiscovery();
+      },
+      fail: res => {
+        console.log('openBluetoothAdapter fail', res);
+        if (res.errCode === 10001) {
+          wx.onBluetoothAdapterStateChange(function(res) {
+            console.log('onBluetoothAdapterStateChange', res);
+            if (res.available) {
+              setTimeout(() => {
+                this.startBluetoothDevicesDiscovery();
+              }, 2000);
+            }
+          });
+        }
+      }
+    });
+  }
+
+  startBluetoothDevicesDiscovery() {
+    console.log('进入');
+    if (this._discoveryStarted) {
+      return;
+    }
+    this._discoveryStarted = true;
+    wx.startBluetoothDevicesDiscovery({
+      // allowDuplicatesKey: true,
+      success: res => {
+        console.log('startBluetoothDevicesDiscovery success', res);
+        this.onBluetoothDeviceFound();
+      }
+    });
+  }
+
+  onBluetoothDeviceFound() {
+    wx.onBluetoothDeviceFound(res => {
+      console.log('deviceFound', res);
+      res.devices.forEach(device => {
+        if (!device.name && !device.localName) {
+          return;
+        }
+        const foundDevices = this.devices;
+        const idx = inArray(foundDevices, 'deviceId', device.deviceId);
+        const data = {};
+        if (idx === -1) {
+          data[`devices[${foundDevices.length}]`] = device;
+        } else {
+          data[`devices[${idx}]`] = device;
+        }
+        console.log('data11111111', data, foundDevices, idx);
+        this.dataList = data;
+      });
+    });
+  }
+
+  connect() {
+    console.log(1111);
+    const that = this;
+    wx.openBluetoothAdapter({
+      success: function(res) {
+        console.log('success', res);
+        that.startBluetoothDevicesDiscovery();
+      },
+      fail(res) {
+        console.log('fail', res);
+      },
+      complete: res => {
+        console.log('complete', res);
+        wx.onBluetoothAdapterStateChange(res => {
+          // console.log('this:', that);
+          if (res.available) {
+            setTimeout(function() {
+              that.connect();
+            }, 2000);
+          }
+        }); //开始搜索
+      }
+    });
+  }
+}
+</script>

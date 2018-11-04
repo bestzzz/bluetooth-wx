@@ -1,0 +1,307 @@
+<style>
+.devices_summary {
+  margin-top: 30px;
+  padding: 10px;
+  font-size: 16px;
+}
+.device_list {
+  height: 300px;
+  margin: 50px 5px;
+  margin-top: 0;
+  border: 1px solid #eee;
+  border-radius: 5px;
+  width: auto;
+}
+.device_item {
+  border-bottom: 1px solid #eee;
+  padding: 10px;
+  color: #666;
+}
+.device_item_hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+.connected_info {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  background-color: #f0f0f0;
+  padding: 10px;
+  padding-bottom: 20px;
+  margin-bottom: env(safe-area-inset-bottom);
+  font-size: 14px;
+  min-height: 100px;
+  box-shadow: 0px 0px 3px 0px;
+}
+.connected_info .operation {
+  position: absolute;
+  display: inline-block;
+  right: 30px;
+}
+</style>
+
+
+<template>
+  <view>
+    <!-- <wxs module="utils">
+      module.exports.max = function(n1, n2) {
+        return Math.max(n1, n2)
+      }
+      module.exports.len = function(arr) {
+        arr = arr || []
+        return arr.length
+      }
+    </wxs> -->
+    <view>
+      <button @tap="openBluetoothAdapter">开始扫描</button>
+      <button @tap="stop">停止扫描</button>
+      <button @tap="closeBluetoothAdapter">结束流程</button>
+    </view>
+
+    <view>
+      <view class="devices_summary">已发现 {{devices.length}} 个外围设备：</view>
+      <scroll-view class="device_list" scroll-y scroll-with-animation>
+        <view wx:for="{{devices}}" wx:key="index"
+        data-device-id="{{item.deviceId}}"
+        data-name="{{item.name || item.localName}}"
+        @tap="createBLEConnection" 
+        class="device_item"
+        hover-class="device_item_hover">
+          <view style="font-size: 16px; color: #333;">{{item.name}}</view>
+          <view style="font-size: 10px">信号强度: {{item.RSSI}}dBm ({{utils.max(0, item.RSSI + 100)}}%)</view>
+          <view style="font-size: 10px">UUID: {{item.deviceId}}</view>
+          <view style="font-size: 10px">Service数量: {{utils.len(item.advertisServiceUUIDs)}}</view>
+        </view>
+      </scroll-view>
+
+      <view class="connected_info" wx:if="{{connected}}">
+        <view>
+          <text>已连接到 {{name}}</text>
+          <view class="operation">
+          <button wx:if="{{canWrite}}" size="mini" bindtap="writeBLECharacteristicValue">写数据</button>
+          <button size="mini" @tap="closeBLEConnection">断开连接</button>
+          </view>
+        </view>
+        <view wx:for="{{chs}}" wx:key="index" style="font-size: 12px; margin-top: 10px;">
+          <view>特性UUID: {{item.uuid}}</view>
+          <view>特性值: {{item.value}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script>
+import wepy from 'wepy';
+import { utils } from '../utils';
+
+function inArray(arr, key, val) {
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i][key] === val) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function ab2hex(buffer) {
+  var hexArr = Array.prototype.map.call(new Uint8Array(buffer), function(bit) {
+    return ('00' + bit.toString(16)).slice(-2);
+  });
+  return hexArr.join('');
+}
+
+export default class List extends wepy.page {
+  config = {
+    navigationBarTitleText: '连接蓝牙'
+  };
+
+  data = {
+    devices: [],
+    connected: false,
+    chs: [],
+    name: '',
+    deviceId: '',
+    canWrite: false
+  };
+
+  methods = {
+    openBluetoothAdapter() {
+      wx.openBluetoothAdapter({
+        success: res => {
+          console.log('openBluetoothAdapter success', res);
+          this.startBluetoothDevicesDiscovery();
+        },
+        fail: res => {
+          if (res.errCode === 10001) {
+            wx.onBluetoothAdapterStateChange(function(res) {
+              console.log('onBluetoothAdapterStateChange', res);
+              if (res.available) {
+                this.startBluetoothDevicesDiscovery();
+              }
+            });
+          }
+        }
+      });
+    },
+    stop() {
+      this.stopBluetoothDevicesDiscovery();
+    },
+    closeBluetoothAdapter() {
+      wx.closeBluetoothAdapter();
+      this._discoveryStarted = false;
+    },
+
+    createBLEConnection(e) {
+      const ds = e.currentTarget.dataset;
+      const deviceId = ds.deviceId;
+      const name = ds.name;
+      // console.log(e.currentTarget);
+      wx.createBLEConnection({
+        deviceId,
+        success: res => {
+          this.connected = true;
+          this.name = name;
+          this.deviceId = deviceId;
+          this.$apply();
+          this.getBLEDeviceServices(deviceId);
+        }
+      });
+      this.stopBluetoothDevicesDiscovery();
+    },
+    closeBLEConnection() {
+      wx.closeBLEConnection({
+        deviceId: this.deviceId
+      });
+      this.connected = false;
+      this.chs = [];
+      this.canWrite = false;
+      this.$apply();
+    }
+  };
+
+  onLoad() {
+    // this.openBluetoothAdapter();
+  }
+
+  startBluetoothDevicesDiscovery() {
+    if (this._discoveryStarted) {
+      return;
+    }
+    this._discoveryStarted = true;
+    wx.startBluetoothDevicesDiscovery({
+      allowDuplicatesKey: true,
+      success: res => {
+        console.log('startBluetoothDevicesDiscovery success', res);
+        this.onBluetoothDeviceFound();
+      }
+    });
+  }
+
+  onBluetoothDeviceFound() {
+    wx.onBluetoothDeviceFound(res => {
+      res.devices.forEach(device => {
+        if (!device.name && !device.localName) {
+          return;
+        }
+        const foundDevices = this.devices;
+        const idx = inArray(foundDevices, 'deviceId', device.deviceId);
+        let data = [];
+        if (idx === -1) {
+          data = this.devices;
+          data[foundDevices.length] = device;
+        } else {
+          data = this.devices;
+          data[idx] = device;
+        }
+        this.devices = data;
+        this.$apply();
+      });
+    });
+  }
+
+  getBLEDeviceServices(deviceId) {
+    wx.getBLEDeviceServices({
+      deviceId,
+      success: res => {
+        for (let i = 0; i < res.services.length; i++) {
+          if (res.services[i].isPrimary) {
+            this.getBLEDeviceCharacteristics(deviceId, res.services[i].uuid);
+            return;
+          }
+        }
+      },
+      fail: res => {
+        console.log('getBLEDeviceServices', res);
+      }
+    });
+  }
+
+  getBLEDeviceCharacteristics(deviceId, serviceId) {
+    wx.getBLEDeviceCharacteristics({
+      deviceId,
+      serviceId,
+      success: res => {
+        console.log('getBLEDeviceCharacteristics success', res.characteristics);
+        for (let i = 0; i < res.characteristics.length; i++) {
+          let item = res.characteristics[i];
+          if (item.properties.read) {
+            wx.readBLECharacteristicValue({
+              deviceId,
+              serviceId,
+              characteristicId: item.uuid
+            });
+          }
+          // if (item.properties.write) {
+          //   this.setData({
+          //     canWrite: true
+          //   })
+          //   this._deviceId = deviceId
+          //   this._serviceId = serviceId
+          //   this._characteristicId = item.uuid
+          //   this.writeBLECharacteristicValue()
+          // }
+          if (item.properties.notify || item.properties.indicate) {
+            wx.notifyBLECharacteristicValueChange({
+              deviceId,
+              serviceId,
+              characteristicId: item.uuid,
+              state: true
+            });
+          }
+        }
+      },
+      fail(res) {
+        console.error('getBLEDeviceCharacteristics', res);
+      }
+    });
+    // 操作之前先监听，保证第一时间获取数据
+    wx.onBLECharacteristicValueChange(characteristic => {
+      const idx = inArray(
+        this.chs,
+        'uuid',
+        characteristic.characteristicId
+      );
+      let data = [];
+      if (idx === -1) {
+        data = this.chs;
+        data[this.chs.length] = {
+          uuid: characteristic.characteristicId,
+          value: ab2hex(characteristic.value)
+        };
+      } else {
+        data = this.chs;
+        data[idx] = {
+          uuid: characteristic.characteristicId,
+          value: ab2hex(characteristic.value)
+        };
+      }
+      this.chs = data;
+      this.$apply();
+    });
+  }
+
+  stopBluetoothDevicesDiscovery() {
+    wx.stopBluetoothDevicesDiscovery();
+  }
+}
+</script>
